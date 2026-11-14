@@ -8,7 +8,7 @@ use validator::Validate;
 pub fn scope() -> Scope {
     web::scope("/stores").route("", web::get().to(list).post(create))
         .route("/{id}/switch", web::post().to(switch))
-        .service(web::scope("/settings").route("", web::patch(settings)))
+        .service(web::scope("/settings").route("", web::get().to(get_settings).patch(settings)))
 }
 async fn list(ctx:Ctx) -> Result<HttpResponse> {
     ctx.read("multi_store")?; let mut tx=ctx.tx().await?;
@@ -32,6 +32,14 @@ async fn switch(ctx:Ctx,id:web::Path<Uuid>) -> Result<HttpResponse> {
     let store=sqlx::query_as::<_,Store>("SELECT id,organization_id,name,address,code,active,created_at FROM stores WHERE organization_id=$1 AND id=$2 AND active").bind(ctx.session.organization_id).bind(id).fetch_optional(&mut *tx).await?.ok_or(AppError::NotFound)?;
     sqlx::query("UPDATE sessions SET store_id=$2 WHERE id=$1").bind(ctx.session.session_id).bind(id).execute(&mut *tx).await?;
     audit::record(&mut tx,&ctx,"store.switched","store",Some(id),json!({})).await?; tx.commit().await?; Ok(HttpResponse::Ok().json(store))
+}
+async fn get_settings(ctx:Ctx) -> Result<HttpResponse> {
+    ctx.read("settings")?;
+    let mut tx=ctx.tx().await?;
+    let store=sqlx::query_as::<_,Store>("SELECT id,organization_id,name,address,code,active,created_at FROM stores WHERE organization_id=$1 AND id=$2")
+        .bind(ctx.session.organization_id).bind(ctx.session.store_id).fetch_optional(&mut *tx).await?.ok_or(AppError::NotFound)?;
+    tx.commit().await?;
+    Ok(HttpResponse::Ok().json(store))
 }
 async fn settings(ctx:Ctx,body:ApiJson<StoreInput>) -> Result<HttpResponse> {
     ctx.write("settings")?; let body=body.0; let mut tx=ctx.tx().await?;

@@ -12,6 +12,7 @@ test-results/
 !.env.example
 .vercel/
 *.log
+*.tsbuildinfo
 .DS_Store
 backend/target/
 .env.local
